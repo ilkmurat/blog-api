@@ -1,0 +1,472 @@
+{
+  "info": {
+    "name": "Inkwell Blog API",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8000"
+    },
+    {
+      "key": "slug",
+      "value": ""
+    }
+  ],
+  "item": [
+    {
+      "name": "Health",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{baseUrl}}/health",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "health"
+          ]
+        },
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ]
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('200 and all deps ok', () => { pm.response.to.have.status(200); pm.expect(pm.response.json()).to.eql({status:'ok',postgres:'ok',qdrant:'ok'}); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Create post",
+      "request": {
+        "method": "POST",
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/posts",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "posts"
+          ]
+        },
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"title\": \"Postman Contract Check {{$timestamp}}\",\n  \"content\": \"Vector similarity search with Qdrant embeddings.\",\n  \"category\": \"API Testing\",\n  \"tags\": [\n    \"Postman\",\n    \"Qdrant\",\n    \"postman\"\n  ]\n}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('201 Created', () => pm.response.to.have.status(201));",
+              "const p = pm.response.json();",
+              "pm.test('Post shape', () => { pm.expect(p).to.include.all.keys(...['id','slug','title','excerpt','author','category','tags','published_at','reading_time'], 'content','created_at','updated_at'); });",
+              "pm.test('Category and tags normalised', () => { pm.expect(p.category.slug).to.eql('api-testing'); pm.expect(p.tags.map(t => t.slug)).to.have.members(['postman','qdrant']); });",
+              "pm.collectionVariables.set('slug', p.slug);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Create duplicate slug",
+      "request": {
+        "method": "POST",
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/posts",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "posts"
+          ]
+        },
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"title\": \"dup\",\n  \"slug\": \"{{slug}}\",\n  \"content\": \"x\",\n  \"category\": \"Misc\"\n}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('409 Conflict with detail', () => { pm.response.to.have.status(409); pm.expect(pm.response.json().detail).to.be.a('string'); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Create invalid",
+      "request": {
+        "method": "POST",
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/posts",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "posts"
+          ]
+        },
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"title\": \"\",\n  \"content\": \"x\"\n}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('422 Validation error', () => { pm.response.to.have.status(422); pm.expect(pm.response.json().detail).to.be.an('array'); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Get post",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/posts/{{slug}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "posts",
+            "{{slug}}"
+          ]
+        },
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ]
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('200 with content', () => { pm.response.to.have.status(200); pm.expect(pm.response.json().slug).to.eql(pm.collectionVariables.get('slug')); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "List posts by tag",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/posts?tag=qdrant&page_size=5",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "posts"
+          ],
+          "query": [
+            {
+              "key": "tag",
+              "value": "qdrant"
+            },
+            {
+              "key": "page_size",
+              "value": "5"
+            }
+          ]
+        },
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ]
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('200 page shape', () => { pm.response.to.have.status(200); pm.expect(pm.response.json()).to.have.all.keys('items','total','page','page_size','pages'); });",
+              "const d = pm.response.json();",
+              "pm.test('Filtered to tag and summary-only items', () => { pm.expect(d.items.map(i => i.slug)).to.include(pm.collectionVariables.get('slug')); d.items.forEach(i => { pm.expect(i).to.have.all.keys(...['id','slug','title','excerpt','author','category','tags','published_at','reading_time']); }); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Update post",
+      "request": {
+        "method": "PATCH",
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/posts/{{slug}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "posts",
+            "{{slug}}"
+          ]
+        },
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"excerpt\": \"Updated via Postman\"\n}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('200 updated, slug stable', () => { pm.response.to.have.status(200); const p = pm.response.json(); pm.expect(p.excerpt).to.eql('Updated via Postman'); pm.expect(p.slug).to.eql(pm.collectionVariables.get('slug')); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Semantic search",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/posts/search?q=vector similarity search&limit=5",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "posts",
+            "search"
+          ],
+          "query": [
+            {
+              "key": "q",
+              "value": "vector similarity search"
+            },
+            {
+              "key": "limit",
+              "value": "5"
+            }
+          ]
+        },
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ]
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('200 ranked hits', () => { pm.response.to.have.status(200); const items = pm.response.json().items; pm.expect(items.length).to.be.above(0); items.forEach(h => { pm.expect(h).to.have.all.keys('score','post'); pm.expect(h.score).to.be.a('number'); }); });",
+              "pm.test('Our post is in the results', () => pm.expect(pm.response.json().items.map(h => h.post.slug)).to.include(pm.collectionVariables.get('slug')));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "List categories",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/categories",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "categories"
+          ]
+        },
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ]
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('200 with counts', () => { pm.response.to.have.status(200); const c = pm.response.json().find(x => x.slug === 'api-testing'); pm.expect(c.post_count).to.be.at.least(1); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "List tags",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/tags",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "tags"
+          ]
+        },
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ]
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('200 with counts', () => { pm.response.to.have.status(200); pm.response.json().forEach(t => pm.expect(t).to.have.all.keys('name','slug','post_count')); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Delete post",
+      "request": {
+        "method": "DELETE",
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/posts/{{slug}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "posts",
+            "{{slug}}"
+          ]
+        },
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ]
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('204 No Content', () => pm.response.to.have.status(204));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Get deleted post",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/posts/{{slug}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "posts",
+            "{{slug}}"
+          ]
+        },
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ]
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('404 Not Found', () => { pm.response.to.have.status(404); pm.expect(pm.response.json().detail).to.be.a('string'); });"
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

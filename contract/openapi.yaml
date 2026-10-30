@@ -1,0 +1,208 @@
+openapi: 3.1.0
+info:
+  title: Inkwell Blog API
+  version: 0.1.0
+  description: >
+    Backend for the Inkwell blog. Posts, categories and tags are stored in PostgreSQL;
+    post embeddings are stored in Qdrant to power semantic search.
+servers:
+  - url: http://localhost:8000
+paths:
+  /health:
+    get:
+      summary: Service and dependency health
+      operationId: health
+      responses:
+        "200":
+          description: All dependencies reachable
+          content: { application/json: { schema: { $ref: "#/components/schemas/Health" } } }
+        "503":
+          description: One or more dependencies unavailable
+          content: { application/json: { schema: { $ref: "#/components/schemas/Health" } } }
+  /api/v1/posts:
+    get:
+      summary: List posts (newest first)
+      operationId: listPosts
+      parameters:
+        - { name: page, in: query, schema: { type: integer, minimum: 1, default: 1 } }
+        - { name: page_size, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 10 } }
+        - { name: category, in: query, description: Category slug, schema: { type: string } }
+        - { name: tag, in: query, description: Tag slug, schema: { type: string } }
+        - { name: q, in: query, description: Case-insensitive keyword match on title/excerpt/content, schema: { type: string } }
+      responses:
+        "200":
+          description: A page of posts
+          content: { application/json: { schema: { $ref: "#/components/schemas/PostPage" } } }
+    post:
+      summary: Create a post
+      description: Category and tags are referenced by name and created if they don't exist. The post is indexed in Qdrant.
+      operationId: createPost
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/PostCreate" } } }
+      responses:
+        "201":
+          description: Created
+          content: { application/json: { schema: { $ref: "#/components/schemas/Post" } } }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+  /api/v1/posts/search:
+    get:
+      summary: Semantic search over posts (Qdrant)
+      operationId: searchPosts
+      parameters:
+        - { name: q, in: query, required: true, schema: { type: string, minLength: 1 } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 50, default: 5 } }
+      responses:
+        "200":
+          description: Posts ranked by similarity
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items: { type: array, items: { $ref: "#/components/schemas/SearchHit" } }
+        "422": { $ref: "#/components/responses/ValidationError" }
+  /api/v1/posts/{slug}:
+    parameters:
+      - { name: slug, in: path, required: true, schema: { type: string } }
+    get:
+      summary: Get a post
+      operationId: getPost
+      responses:
+        "200":
+          description: The post
+          content: { application/json: { schema: { $ref: "#/components/schemas/Post" } } }
+        "404": { $ref: "#/components/responses/NotFound" }
+    patch:
+      summary: Partially update a post
+      operationId: updatePost
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/PostUpdate" } } }
+      responses:
+        "200":
+          description: Updated
+          content: { application/json: { schema: { $ref: "#/components/schemas/Post" } } }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+    delete:
+      summary: Delete a post (also removes its vector)
+      operationId: deletePost
+      responses:
+        "204": { description: Deleted }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /api/v1/categories:
+    get:
+      summary: List categories with post counts
+      operationId: listCategories
+      responses:
+        "200":
+          description: Categories
+          content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/TermWithCount" } } } }
+  /api/v1/tags:
+    get:
+      summary: List tags with post counts
+      operationId: listTags
+      responses:
+        "200":
+          description: Tags
+          content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/TermWithCount" } } } }
+components:
+  responses:
+    NotFound:
+      description: Resource not found
+      content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+    Conflict:
+      description: Slug already in use
+      content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+    ValidationError:
+      description: Request failed validation
+      content: { application/json: { schema: { type: object, properties: { detail: { type: array, items: { type: object } } } } } }
+  schemas:
+    Error:
+      type: object
+      required: [detail]
+      properties: { detail: { type: string } }
+    Health:
+      type: object
+      required: [status, postgres, qdrant]
+      properties:
+        status: { type: string, enum: [ok, degraded] }
+        postgres: { type: string, enum: [ok, error] }
+        qdrant: { type: string, enum: [ok, error] }
+    Term:
+      type: object
+      required: [name, slug]
+      properties:
+        name: { type: string }
+        slug: { type: string }
+    TermWithCount:
+      allOf:
+        - $ref: "#/components/schemas/Term"
+        - type: object
+          required: [post_count]
+          properties: { post_count: { type: integer } }
+    PostCreate:
+      type: object
+      required: [title, content, category]
+      properties:
+        title: { type: string, minLength: 1, maxLength: 200 }
+        slug: { type: string, pattern: "^[a-z0-9]+(?:-[a-z0-9]+)*$", description: Derived from title when omitted }
+        excerpt: { type: string, maxLength: 500 }
+        content: { type: string, minLength: 1, description: Markdown }
+        author: { type: string, default: Anonymous }
+        category: { type: string, minLength: 1, description: Category name }
+        tags: { type: array, items: { type: string, minLength: 1 }, default: [] }
+        published_at: { type: string, format: date-time, description: Defaults to now }
+    PostUpdate:
+      type: object
+      description: Any subset of PostCreate fields
+      properties:
+        title: { type: string, minLength: 1, maxLength: 200 }
+        slug: { type: string, pattern: "^[a-z0-9]+(?:-[a-z0-9]+)*$" }
+        excerpt: { type: string, maxLength: 500 }
+        content: { type: string, minLength: 1 }
+        author: { type: string }
+        category: { type: string, minLength: 1 }
+        tags: { type: array, items: { type: string, minLength: 1 } }
+        published_at: { type: string, format: date-time }
+    PostSummary:
+      type: object
+      required: [id, slug, title, excerpt, author, category, tags, published_at, reading_time]
+      properties:
+        id: { type: integer }
+        slug: { type: string }
+        title: { type: string }
+        excerpt: { type: string }
+        author: { type: string }
+        category: { $ref: "#/components/schemas/Term" }
+        tags: { type: array, items: { $ref: "#/components/schemas/Term" } }
+        published_at: { type: string, format: date-time }
+        reading_time: { type: integer, description: Minutes }
+    Post:
+      allOf:
+        - $ref: "#/components/schemas/PostSummary"
+        - type: object
+          required: [content, created_at, updated_at]
+          properties:
+            content: { type: string }
+            created_at: { type: string, format: date-time }
+            updated_at: { type: string, format: date-time }
+    PostPage:
+      type: object
+      required: [items, total, page, page_size, pages]
+      properties:
+        items: { type: array, items: { $ref: "#/components/schemas/PostSummary" } }
+        total: { type: integer }
+        page: { type: integer }
+        page_size: { type: integer }
+        pages: { type: integer }
+    SearchHit:
+      type: object
+      required: [score, post]
+      properties:
+        score: { type: number }
+        post: { $ref: "#/components/schemas/PostSummary" }
