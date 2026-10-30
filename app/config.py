@@ -17,6 +17,8 @@ class Settings(BaseSettings):
     admin_username: str = "murat"
     admin_password: str = "murat"
     session_days: int = 30
+    # Host headers accepted by the MCP endpoint (DNS-rebinding protection)
+    mcp_allowed_hosts: list[str] = ["localhost:*", "127.0.0.1:*", "api:*", "testserver"]
 
 
 @lru_cache

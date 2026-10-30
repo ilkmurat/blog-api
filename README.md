@@ -36,6 +36,11 @@ The contract lives in [`contract/openapi.yaml`](contract/openapi.yaml).
 | GET | `/api/v1/auth/me` | Current user |
 | GET / POST | `/api/v1/users` | List / create users (admin) |
 
+## MCP server
+`POST /mcp/` (Streamable HTTP, stateless) exposes read-only tools for AI clients such as
+[blog-agent](https://github.com/ilkmurat/blog-agent): posts by category/tag, most liked, semantic search, stats and
+user counts; `admin_list_users` requires an admin bearer token. Tool contract: [`contract/mcp-tools.md`](contract/mcp-tools.md).
+
 Creating, editing and deleting posts, categories, tags and users requires an **admin** token.
 
 ## Auth
@@ -67,6 +72,7 @@ app/
   vectors.py       Qdrant store + embedders
   auth.py          auth dependencies (optional user / member / admin), admin bootstrap
   security.py      password + token hashing
+  mcp_server.py    MCP tools mounted at /mcp
   routers/         health, posts, categories/tags, auth/users
   seed.py, reindex.py
 alembic/           Migrations
