@@ -28,8 +28,24 @@ The contract lives in [`contract/openapi.yaml`](contract/openapi.yaml).
 | POST | `/api/v1/posts` | Create (category/tags by name, created on demand) |
 | GET | `/api/v1/posts/search?q=` | Semantic search (Qdrant) |
 | GET/PATCH/DELETE | `/api/v1/posts/{slug}` | Read, partial update, delete |
-| GET | `/api/v1/categories` | Categories with post counts |
-| GET | `/api/v1/tags` | Tags with post counts |
+| POST | `/api/v1/posts/{slug}/like` | Like — anonymous: unlimited, members: once per post |
+| GET / POST | `/api/v1/categories` | Categories with post counts / create (admin) |
+| GET / POST | `/api/v1/tags` | Tags with post counts / create (admin) |
+| POST | `/api/v1/auth/register` | Sign up (username + email unique, no other validation) |
+| POST | `/api/v1/auth/login`, `/api/v1/auth/logout` | Bearer-token sessions |
+| GET | `/api/v1/auth/me` | Current user |
+| GET / POST | `/api/v1/users` | List / create users (admin) |
+
+Creating, editing and deleting posts, categories, tags and users requires an **admin** token.
+
+## Auth
+- Passwords are hashed with scrypt; tokens are random and stored as SHA-256 hashes in `sessions` (30-day expiry).
+- An admin account is created on startup if missing: **`murat` / `murat`** by default.
+  Override with `ADMIN_USERNAME` / `ADMIN_PASSWORD` before deploying anywhere public.
+
+## Database tables
+`posts` (incl. `like_count`), `categories`, `tags`, `post_tags`, `users`, `sessions`, `post_likes`
+(composite primary key `(post_id, user_id)` enforces one like per member per post).
 
 Postgres is the source of truth. Posts are indexed in Qdrant on create/update and removed on delete;
 if Qdrant was unavailable during a write, rebuild the index with `docker compose exec api python -m app.reindex`.
@@ -38,6 +54,7 @@ if Qdrant was unavailable during a write, rebuild the index with `docker compose
 ```bash
 docker compose exec api pytest -q                                   # unit/integration tests (isolated blog_test DB)
 postman collection run postman/blog-api.postman_collection.json     # contract checks against the running API
+# note: the Postman run leaves a test member, category and tag behind in the target database
 ```
 
 ## Project layout
@@ -48,7 +65,9 @@ app/
   models.py        SQLAlchemy models
   schemas.py       Request/response models
   vectors.py       Qdrant store + embedders
-  routers/         health, posts, categories/tags
+  auth.py          auth dependencies (optional user / member / admin), admin bootstrap
+  security.py      password + token hashing
+  routers/         health, posts, categories/tags, auth/users
   seed.py, reindex.py
 alembic/           Migrations
 contract/          OpenAPI contract

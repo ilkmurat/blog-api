@@ -22,11 +22,27 @@ def migrate():
 
 
 @pytest.fixture
-def client():
+def anon():
+    """Unauthenticated client on a clean database (the admin user is recreated on startup)."""
     with engine.begin() as conn:
-        conn.execute(text("TRUNCATE post_tags, posts, tags, categories RESTART IDENTITY CASCADE"))
+        conn.execute(
+            text("TRUNCATE post_likes, sessions, users, post_tags, posts, tags, categories RESTART IDENTITY CASCADE")
+        )
     store = get_vector_store()
     if store.client.collection_exists(store.collection):
         store.client.delete_collection(store.collection)
     with TestClient(app) as c:
+        yield c
+
+
+def login(client, username="murat", password="murat") -> dict[str, str]:
+    r = client.post("/api/v1/auth/login", json={"username": username, "password": password})
+    assert r.status_code == 200, r.text
+    return {"Authorization": f"Bearer {r.json()['token']}"}
+
+
+@pytest.fixture
+def client(anon):
+    """Client authenticated as the default admin."""
+    with TestClient(app, headers=login(anon)) as c:
         yield c

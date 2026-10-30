@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Inkwell Blog API
-  version: 0.1.0
+  version: 0.2.0
   description: >
     Backend for the Inkwell blog. Posts, categories and tags are stored in PostgreSQL;
     post embeddings are stored in Qdrant to power semantic search.
@@ -37,6 +37,7 @@ paths:
       summary: Create a post
       description: Category and tags are referenced by name and created if they don't exist. The post is indexed in Qdrant.
       operationId: createPost
+      security: [{ bearerAuth: [] }]
       requestBody:
         required: true
         content: { application/json: { schema: { $ref: "#/components/schemas/PostCreate" } } }
@@ -44,6 +45,8 @@ paths:
         "201":
           description: Created
           content: { application/json: { schema: { $ref: "#/components/schemas/Post" } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
         "409": { $ref: "#/components/responses/Conflict" }
         "422": { $ref: "#/components/responses/ValidationError" }
   /api/v1/posts/search:
@@ -69,15 +72,19 @@ paths:
       - { name: slug, in: path, required: true, schema: { type: string } }
     get:
       summary: Get a post
+      description: When called with a member token, `liked_by_me` reflects that member's like.
       operationId: getPost
+      security: [{}, { bearerAuth: [] }]
       responses:
         "200":
           description: The post
           content: { application/json: { schema: { $ref: "#/components/schemas/Post" } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
     patch:
       summary: Partially update a post
       operationId: updatePost
+      security: [{ bearerAuth: [] }]
       requestBody:
         required: true
         content: { application/json: { schema: { $ref: "#/components/schemas/PostUpdate" } } }
@@ -85,14 +92,35 @@ paths:
         "200":
           description: Updated
           content: { application/json: { schema: { $ref: "#/components/schemas/Post" } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
         "409": { $ref: "#/components/responses/Conflict" }
         "422": { $ref: "#/components/responses/ValidationError" }
     delete:
       summary: Delete a post (also removes its vector)
       operationId: deletePost
+      security: [{ bearerAuth: [] }]
       responses:
         "204": { description: Deleted }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /api/v1/posts/{slug}/like:
+    parameters:
+      - { name: slug, in: path, required: true, schema: { type: string } }
+    post:
+      summary: Like a post
+      description: >
+        Anonymous callers may like any number of times (each call adds one like).
+        Members (bearer token) count at most once per post; repeat calls are idempotent and leave the count unchanged.
+      operationId: likePost
+      security: [{}, { bearerAuth: [] }]
+      responses:
+        "200":
+          description: Current like state
+          content: { application/json: { schema: { $ref: "#/components/schemas/LikeResult" } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
   /api/v1/categories:
     get:
@@ -102,6 +130,21 @@ paths:
         "200":
           description: Categories
           content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/TermWithCount" } } } }
+    post:
+      summary: Create a category (admin)
+      operationId: createCategory
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/TermCreate" } } }
+      responses:
+        "201":
+          description: Created
+          content: { application/json: { schema: { $ref: "#/components/schemas/TermWithCount" } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/ValidationError" }
   /api/v1/tags:
     get:
       summary: List tags with post counts
@@ -110,13 +153,110 @@ paths:
         "200":
           description: Tags
           content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/TermWithCount" } } } }
+    post:
+      summary: Create a tag (admin)
+      operationId: createTag
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/TermCreate" } } }
+      responses:
+        "201":
+          description: Created
+          content: { application/json: { schema: { $ref: "#/components/schemas/TermWithCount" } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+  /api/v1/auth/register:
+    post:
+      summary: Sign up as a member
+      description: No format validation; username and email must be unique.
+      operationId: register
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/UserCreate" } } }
+      responses:
+        "201":
+          description: Registered and logged in
+          content: { application/json: { schema: { $ref: "#/components/schemas/AuthResponse" } } }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+  /api/v1/auth/login:
+    post:
+      summary: Log in
+      operationId: login
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/LoginRequest" } } }
+      responses:
+        "200":
+          description: Logged in
+          content: { application/json: { schema: { $ref: "#/components/schemas/AuthResponse" } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+  /api/v1/auth/logout:
+    post:
+      summary: Log out (revokes the current token)
+      operationId: logout
+      security: [{ bearerAuth: [] }]
+      responses:
+        "204": { description: Logged out }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /api/v1/auth/me:
+    get:
+      summary: Current user
+      operationId: me
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: The logged-in user
+          content: { application/json: { schema: { $ref: "#/components/schemas/User" } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /api/v1/users:
+    get:
+      summary: List users (admin)
+      operationId: listUsers
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Users
+          content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/User" } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      summary: Create a user (admin)
+      operationId: createUser
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/AdminUserCreate" } } }
+      responses:
+        "201":
+          description: Created
+          content: { application/json: { schema: { $ref: "#/components/schemas/User" } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/ValidationError" }
 components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: Token from /api/v1/auth/login or /api/v1/auth/register
   responses:
+    Unauthorized:
+      description: Missing, invalid or expired token / wrong credentials
+      content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+    Forbidden:
+      description: Admin role required
+      content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
     NotFound:
       description: Resource not found
       content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
     Conflict:
-      description: Slug already in use
+      description: Slug, username or email already in use
       content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
     ValidationError:
       description: Request failed validation
@@ -171,7 +311,7 @@ components:
         published_at: { type: string, format: date-time }
     PostSummary:
       type: object
-      required: [id, slug, title, excerpt, author, category, tags, published_at, reading_time]
+      required: [id, slug, title, excerpt, author, category, tags, published_at, reading_time, like_count]
       properties:
         id: { type: integer }
         slug: { type: string }
@@ -182,13 +322,15 @@ components:
         tags: { type: array, items: { $ref: "#/components/schemas/Term" } }
         published_at: { type: string, format: date-time }
         reading_time: { type: integer, description: Minutes }
+        like_count: { type: integer }
     Post:
       allOf:
         - $ref: "#/components/schemas/PostSummary"
         - type: object
-          required: [content, created_at, updated_at]
+          required: [content, created_at, updated_at, liked_by_me]
           properties:
             content: { type: string }
+            liked_by_me: { type: boolean, description: Always false for anonymous callers }
             created_at: { type: string, format: date-time }
             updated_at: { type: string, format: date-time }
     PostPage:
@@ -206,3 +348,52 @@ components:
       properties:
         score: { type: number }
         post: { $ref: "#/components/schemas/PostSummary" }
+    TermCreate:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 100 }
+    LikeResult:
+      type: object
+      required: [like_count, liked_by_me]
+      properties:
+        like_count: { type: integer }
+        liked_by_me: { type: boolean }
+    UserCreate:
+      type: object
+      required: [username, email, first_name, last_name, password]
+      properties:
+        username: { type: string }
+        email: { type: string }
+        first_name: { type: string }
+        last_name: { type: string }
+        password: { type: string, writeOnly: true }
+    AdminUserCreate:
+      allOf:
+        - $ref: "#/components/schemas/UserCreate"
+        - type: object
+          properties:
+            is_admin: { type: boolean, default: false }
+    User:
+      type: object
+      required: [id, username, email, first_name, last_name, is_admin, created_at]
+      properties:
+        id: { type: integer }
+        username: { type: string }
+        email: { type: string }
+        first_name: { type: string }
+        last_name: { type: string }
+        is_admin: { type: boolean }
+        created_at: { type: string, format: date-time }
+    LoginRequest:
+      type: object
+      required: [username, password]
+      properties:
+        username: { type: string }
+        password: { type: string, writeOnly: true }
+    AuthResponse:
+      type: object
+      required: [token, user]
+      properties:
+        token: { type: string }
+        user: { $ref: "#/components/schemas/User" }

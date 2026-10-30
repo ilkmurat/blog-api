@@ -50,12 +50,14 @@ class PostSummary(BaseModel):
     tags: list[Term]
     published_at: datetime
     reading_time: int
+    like_count: int
 
 
 class PostOut(PostSummary):
     content: str
     created_at: datetime
     updated_at: datetime
+    liked_by_me: bool = False
 
 
 class PostPage(BaseModel):
@@ -73,6 +75,49 @@ class SearchHit(BaseModel):
 
 class SearchResults(BaseModel):
     items: list[SearchHit]
+
+
+class TermCreate(BaseModel):
+    name: Annotated[NonEmpty, StringConstraints(max_length=100)]
+
+
+class LikeResult(BaseModel):
+    like_count: int
+    liked_by_me: bool
+
+
+# No format validation on user fields by design; only username/email uniqueness is enforced.
+class UserCreate(BaseModel):
+    username: str
+    email: str
+    first_name: str
+    last_name: str
+    password: str
+
+
+class AdminUserCreate(UserCreate):
+    is_admin: bool = False
+
+
+class UserOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    username: str
+    email: str
+    first_name: str
+    last_name: str
+    is_admin: bool
+    created_at: datetime
+
+
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+
+
+class AuthResponse(BaseModel):
+    token: str
+    user: UserOut
 
 
 class Health(BaseModel):

@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 
 from fastapi.testclient import TestClient
 
+from app.config import get_settings
 from app.main import app
 
 SAMPLE_POSTS = [
@@ -50,7 +51,12 @@ SAMPLE_POSTS = [
 ]
 
 if __name__ == "__main__":
+    settings = get_settings()
     with TestClient(app) as client:
+        login = client.post(
+            "/api/v1/auth/login", json={"username": settings.admin_username, "password": settings.admin_password}
+        )
+        client.headers["Authorization"] = f"Bearer {login.json()['token']}"
         for post in SAMPLE_POSTS:
             body = {**post, "author": "Murat İlk"}
             body["published_at"] = datetime.fromisoformat(post["published_at"]).replace(tzinfo=timezone.utc).isoformat()

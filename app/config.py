@@ -13,6 +13,10 @@ class Settings(BaseSettings):
     embedding_provider: str = "fastembed"
     embedding_model: str = "BAAI/bge-small-en-v1.5"
     cors_origins: list[str] = ["http://localhost:5173"]
+    # Admin account created on startup if missing. Override in production!
+    admin_username: str = "murat"
+    admin_password: str = "murat"
+    session_days: int = 30
 
 
 @lru_cache

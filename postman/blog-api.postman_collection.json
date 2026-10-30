@@ -11,6 +11,14 @@
     {
       "key": "slug",
       "value": ""
+    },
+    {
+      "key": "adminToken",
+      "value": ""
+    },
+    {
+      "key": "memberToken",
+      "value": ""
     }
   ],
   "item": [
@@ -47,7 +55,47 @@
       ]
     },
     {
-      "name": "Create post",
+      "name": "Admin login",
+      "request": {
+        "method": "POST",
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/auth/login",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "auth",
+            "login"
+          ]
+        },
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"username\": \"murat\",\n  \"password\": \"murat\"\n}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('200 admin token', () => { pm.response.to.have.status(200); pm.expect(pm.response.json().user.is_admin).to.be.true; });",
+              "pm.collectionVariables.set('adminToken', pm.response.json().token);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Create post without token",
       "request": {
         "method": "POST",
         "url": {
@@ -69,6 +117,48 @@
         ],
         "body": {
           "mode": "raw",
+          "raw": "{\n  \"title\": \"x\",\n  \"content\": \"x\",\n  \"category\": \"x\"\n}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('401 Unauthorized', () => pm.response.to.have.status(401));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Create post",
+      "request": {
+        "method": "POST",
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/posts",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "posts"
+          ]
+        },
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{adminToken}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
           "raw": "{\n  \"title\": \"Postman Contract Check {{$timestamp}}\",\n  \"content\": \"Vector similarity search with Qdrant embeddings.\",\n  \"category\": \"API Testing\",\n  \"tags\": [\n    \"Postman\",\n    \"Qdrant\",\n    \"postman\"\n  ]\n}"
         }
       },
@@ -80,7 +170,7 @@
             "exec": [
               "pm.test('201 Created', () => pm.response.to.have.status(201));",
               "const p = pm.response.json();",
-              "pm.test('Post shape', () => { pm.expect(p).to.include.all.keys(...['id','slug','title','excerpt','author','category','tags','published_at','reading_time'], 'content','created_at','updated_at'); });",
+              "pm.test('Post shape', () => { pm.expect(p).to.include.all.keys(...['id','slug','title','excerpt','author','category','tags','published_at','reading_time','like_count'], 'content','created_at','updated_at'); });",
               "pm.test('Category and tags normalised', () => { pm.expect(p.category.slug).to.eql('api-testing'); pm.expect(p.tags.map(t => t.slug)).to.have.members(['postman','qdrant']); });",
               "pm.collectionVariables.set('slug', p.slug);"
             ]
@@ -107,6 +197,10 @@
           {
             "key": "Content-Type",
             "value": "application/json"
+          },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{adminToken}}"
           }
         ],
         "body": {
@@ -145,6 +239,10 @@
           {
             "key": "Content-Type",
             "value": "application/json"
+          },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{adminToken}}"
           }
         ],
         "body": {
@@ -239,7 +337,399 @@
             "exec": [
               "pm.test('200 page shape', () => { pm.response.to.have.status(200); pm.expect(pm.response.json()).to.have.all.keys('items','total','page','page_size','pages'); });",
               "const d = pm.response.json();",
-              "pm.test('Filtered to tag and summary-only items', () => { pm.expect(d.items.map(i => i.slug)).to.include(pm.collectionVariables.get('slug')); d.items.forEach(i => { pm.expect(i).to.have.all.keys(...['id','slug','title','excerpt','author','category','tags','published_at','reading_time']); }); });"
+              "pm.test('Filtered to tag and summary-only items', () => { pm.expect(d.items.map(i => i.slug)).to.include(pm.collectionVariables.get('slug')); d.items.forEach(i => { pm.expect(i).to.have.all.keys(...['id','slug','title','excerpt','author','category','tags','published_at','reading_time','like_count']); }); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Register member",
+      "request": {
+        "method": "POST",
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/auth/register",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "auth",
+            "register"
+          ]
+        },
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"username\": \"member{{$timestamp}}\",\n  \"email\": \"member{{$timestamp}}@example.com\",\n  \"first_name\": \"Test\",\n  \"last_name\": \"Member\",\n  \"password\": \"pw\"\n}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('201 with token, no password in user', () => { pm.response.to.have.status(201); const b = pm.response.json(); pm.expect(b.token).to.be.a('string'); pm.expect(b.user).to.have.all.keys('id','username','email','first_name','last_name','is_admin','created_at'); pm.expect(b.user.is_admin).to.be.false; });",
+              "pm.collectionVariables.set('memberToken', pm.response.json().token);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Register duplicate username",
+      "request": {
+        "method": "POST",
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/auth/register",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "auth",
+            "register"
+          ]
+        },
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"username\": \"murat\",\n  \"email\": \"unique{{$timestamp}}@example.com\",\n  \"first_name\": \"a\",\n  \"last_name\": \"b\",\n  \"password\": \"c\"\n}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('409 Conflict', () => pm.response.to.have.status(409));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Member cannot create category",
+      "request": {
+        "method": "POST",
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/categories",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "categories"
+          ]
+        },
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{memberToken}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"name\": \"Nope\"\n}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('403 Forbidden', () => pm.response.to.have.status(403));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Anonymous like",
+      "request": {
+        "method": "POST",
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/posts/{{slug}}/like",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "posts",
+            "{{slug}}",
+            "like"
+          ]
+        },
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ]
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('200 count incremented', () => { pm.response.to.have.status(200); pm.expect(pm.response.json()).to.eql({like_count: 1, liked_by_me: false}); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Anonymous like again",
+      "request": {
+        "method": "POST",
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/posts/{{slug}}/like",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "posts",
+            "{{slug}}",
+            "like"
+          ]
+        },
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ]
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Unlimited for anonymous', () => pm.expect(pm.response.json().like_count).to.eql(2));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Member like",
+      "request": {
+        "method": "POST",
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/posts/{{slug}}/like",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "posts",
+            "{{slug}}",
+            "like"
+          ]
+        },
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{memberToken}}"
+          }
+        ]
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Counted once', () => pm.expect(pm.response.json()).to.eql({like_count: 3, liked_by_me: true}));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Member like again",
+      "request": {
+        "method": "POST",
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/posts/{{slug}}/like",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "posts",
+            "{{slug}}",
+            "like"
+          ]
+        },
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{memberToken}}"
+          }
+        ]
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Idempotent for members', () => pm.expect(pm.response.json()).to.eql({like_count: 3, liked_by_me: true}));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Get post as member",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/posts/{{slug}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "posts",
+            "{{slug}}"
+          ]
+        },
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{memberToken}}"
+          }
+        ]
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('liked_by_me true', () => { pm.response.to.have.status(200); pm.expect(pm.response.json().liked_by_me).to.be.true; pm.expect(pm.response.json().like_count).to.eql(3); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Admin creates tag",
+      "request": {
+        "method": "POST",
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/tags",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "tags"
+          ]
+        },
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{adminToken}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"name\": \"pm-tag-{{$timestamp}}\"\n}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('201 Created', () => { pm.response.to.have.status(201); pm.expect(pm.response.json().post_count).to.eql(0); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Admin lists users",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/users",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "users"
+          ]
+        },
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{adminToken}}"
+          }
+        ]
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('200 includes admin', () => { pm.response.to.have.status(200); pm.expect(pm.response.json().map(u => u.username)).to.include('murat'); });"
             ]
           }
         }
@@ -265,6 +755,10 @@
           {
             "key": "Content-Type",
             "value": "application/json"
+          },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{adminToken}}"
           }
         ],
         "body": {
@@ -418,6 +912,10 @@
           {
             "key": "Content-Type",
             "value": "application/json"
+          },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{adminToken}}"
           }
         ]
       },

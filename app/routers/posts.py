@@ -2,12 +2,23 @@ import logging
 import math
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, or_, select, update
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
+from app.auth import current_user_optional, require_admin
 from app.db import get_db
-from app.models import Category, Post, Tag
-from app.schemas import Error, PostCreate, PostOut, PostPage, PostUpdate, SearchHit, SearchResults
+from app.models import Category, Post, PostLike, Tag, User
+from app.schemas import (
+    Error,
+    LikeResult,
+    PostCreate,
+    PostOut,
+    PostPage,
+    PostUpdate,
+    SearchHit,
+    SearchResults,
+)
 from app.text import make_excerpt, slugify
 from app.vectors import VectorStore, get_vector_store
 
@@ -16,6 +27,7 @@ router = APIRouter(prefix="/api/v1/posts", tags=["posts"])
 
 NOT_FOUND = {404: {"model": Error}}
 CONFLICT = {409: {"model": Error}}
+ADMIN = {401: {"model": Error}, 403: {"model": Error}}
 
 
 def _get_post(db: Session, slug: str) -> Post:
@@ -100,7 +112,13 @@ def search_posts(
     return SearchResults(items=[SearchHit(score=score, post=posts[pid]) for pid, score in hits if pid in posts])
 
 
-@router.post("", response_model=PostOut, status_code=status.HTTP_201_CREATED, responses=CONFLICT)
+@router.post(
+    "",
+    response_model=PostOut,
+    status_code=status.HTTP_201_CREATED,
+    responses={**ADMIN, **CONFLICT},
+    dependencies=[Depends(require_admin)],
+)
 def create_post(body: PostCreate, db: Session = Depends(get_db), vectors: VectorStore = Depends(get_vector_store)):
     slug = body.slug or slugify(body.title)
     if not slug:
@@ -125,12 +143,38 @@ def create_post(body: PostCreate, db: Session = Depends(get_db), vectors: Vector
     return post
 
 
-@router.get("/{slug}", response_model=PostOut, responses=NOT_FOUND)
-def get_post(slug: str, db: Session = Depends(get_db)):
-    return _get_post(db, slug)
+@router.get("/{slug}", response_model=PostOut, responses={**NOT_FOUND, 401: {"model": Error}})
+def get_post(slug: str, db: Session = Depends(get_db), user: User | None = Depends(current_user_optional)):
+    post = _get_post(db, slug)
+    liked = user is not None and db.get(PostLike, (post.id, user.id)) is not None
+    return PostOut.model_validate(post).model_copy(update={"liked_by_me": liked})
 
 
-@router.patch("/{slug}", response_model=PostOut, responses={**NOT_FOUND, **CONFLICT})
+@router.post("/{slug}/like", response_model=LikeResult, responses={**NOT_FOUND, 401: {"model": Error}})
+def like_post(slug: str, db: Session = Depends(get_db), user: User | None = Depends(current_user_optional)):
+    post = _get_post(db, slug)
+    if user is None:
+        counted = True  # anonymous likes are unlimited
+    else:
+        inserted = db.execute(
+            insert(PostLike).values(post_id=post.id, user_id=user.id).on_conflict_do_nothing().returning(PostLike.post_id)
+        ).first()
+        counted = inserted is not None
+    if counted:
+        # Atomic increment; keep updated_at untouched since likes don't edit the post.
+        db.execute(
+            update(Post).where(Post.id == post.id).values(like_count=Post.like_count + 1, updated_at=Post.updated_at)
+        )
+    db.commit()
+    return LikeResult(like_count=db.scalar(select(Post.like_count).where(Post.id == post.id)), liked_by_me=user is not None)
+
+
+@router.patch(
+    "/{slug}",
+    response_model=PostOut,
+    responses={**NOT_FOUND, **CONFLICT, **ADMIN},
+    dependencies=[Depends(require_admin)],
+)
 def update_post(
     slug: str, body: PostUpdate, db: Session = Depends(get_db), vectors: VectorStore = Depends(get_vector_store)
 ):
@@ -153,7 +197,12 @@ def update_post(
     return post
 
 
-@router.delete("/{slug}", status_code=status.HTTP_204_NO_CONTENT, responses=NOT_FOUND)
+@router.delete(
+    "/{slug}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses={**NOT_FOUND, **ADMIN},
+    dependencies=[Depends(require_admin)],
+)
 def delete_post(slug: str, db: Session = Depends(get_db), vectors: VectorStore = Depends(get_vector_store)):
     post = _get_post(db, slug)
     post_id = post.id
