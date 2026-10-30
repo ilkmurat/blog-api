@@ -92,3 +92,23 @@ class PostLike(Base):
     post_id: Mapped[int] = mapped_column(ForeignKey("posts.id", ondelete="CASCADE"), primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class HrDocument(Base):
+    """An uploaded HR PDF. Its text passages and embeddings live in the Qdrant collection `hr_chunks`."""
+
+    __tablename__ = "hr_documents"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    title: Mapped[str] = mapped_column(String(200))
+    topic: Mapped[str] = mapped_column(String(100), index=True)
+    filename: Mapped[str] = mapped_column(String(255))
+    size_bytes: Mapped[int] = mapped_column(Integer)
+    pages: Mapped[int] = mapped_column(Integer, server_default="0", default=0)
+    chunk_count: Mapped[int] = mapped_column(Integer, server_default="0", default=0)
+    status: Mapped[str] = mapped_column(String(20), server_default="processing", default="processing")
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    uploaded_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    uploaded_by: Mapped[User | None] = relationship(lazy="joined")

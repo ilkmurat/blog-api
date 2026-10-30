@@ -4,10 +4,12 @@ Endpoint: `POST /mcp/` (Streamable HTTP, stateless, JSON responses). MCP protoco
 
 **Auth.** Optional `Authorization: Bearer <token>` (same tokens as the REST API). The server resolves the caller
 from the token on every tool call; clients cannot assert identity any other way. A missing or invalid token means
-an anonymous caller. Tools prefixed with `admin_` fail with an error unless the caller is an admin.
+an anonymous caller. Tools prefixed with `admin_` fail unless the caller is an admin; tools prefixed with `hr_`
+fail unless the caller is logged in (member or admin). Clients should hide tools the caller cannot use.
 
 **Data exposure.** Public tools return only published blog content and aggregate numbers. Personal data
-(usernames, names, emails, per-user activity) is only returned by `admin_` tools.
+(usernames, names, emails, per-user activity) is only returned by `admin_` tools. Internal HR documents are only
+returned by `hr_` tools.
 
 All tools are read-only. Post URLs are site-relative (`/post/<slug>`).
 
@@ -21,6 +23,8 @@ All tools are read-only. Post URLs are site-relative (`/post/<slug>`).
 | `list_tags` | – | `[{name, slug, post_count}]` | public |
 | `site_stats` | – | `{posts, categories, tags, total_likes, users, latest_post}` | public |
 | `user_stats` | `days=7` (1–3650) | `{total_users, new_signups, users_logged_in, period_days}` — counts only | public |
+| `hr_search` | `query`, `topic?`, `limit=5` (1–10) | HR document passages ranked by similarity: `{passages: [{document, topic, page, text, score}]}` (multilingual-e5-large); `note` when nothing is indexed | logged in |
+| `hr_list_documents` | – | `{documents: [{title, topic, pages}]}` (ready documents only) | logged in |
 | `admin_list_users` | `limit=20` (1–200), `days?` (only users who signed up in the last N days) | users with `username, first_name, last_name, email, is_admin, created_at, likes_given, last_login` | admin |
 
 Post objects: `{title, slug, url, category, tags[], author, published_at, like_count, excerpt}`.

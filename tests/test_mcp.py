@@ -36,7 +36,7 @@ def test_lists_all_tools(anon):
     tools = {t["name"] for t in rpc(anon, "tools/list")["result"]["tools"]}
     assert tools == {
         "list_posts", "top_liked_posts", "search_posts", "get_post", "list_categories",
-        "list_tags", "site_stats", "user_stats", "admin_list_users",
+        "list_tags", "site_stats", "user_stats", "admin_list_users", "hr_search", "hr_list_documents",
     }
 
 

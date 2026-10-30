@@ -15,7 +15,8 @@ from starlette.types import Receive, Scope, Send
 
 from app.config import get_settings
 from app.db import SessionLocal
-from app.models import AuthSession, Category, Post, PostLike, Tag, User, post_tags
+from app.hr import get_hr_store
+from app.models import AuthSession, Category, HrDocument, Post, PostLike, Tag, User, post_tags
 from app.security import hash_token
 from app.text import slugify
 from app.vectors import get_vector_store
@@ -24,7 +25,7 @@ mcp = FastMCP(
     "inkwell-blog",
     instructions=(
         "Read-only tools for the Inkwell blog: posts, categories, tags, likes and aggregate user statistics. "
-        "Tools prefixed with admin_ require an admin bearer token."
+        "Tools prefixed with admin_ require an admin bearer token; hr_ tools require a logged-in user."
     ),
 )
 
@@ -221,6 +222,49 @@ async def user_stats(days: int = 7) -> dict[str, Any]:
     """Aggregate user counts: total registered users, sign-ups and distinct users who logged in during the last N days.
     Counts only; never personal data."""
     return await _run(_user_stats, days)
+
+
+# --- HR tools (logged-in users) -------------------------------------------------------------
+
+
+async def _require_login(ctx: Context, tool: str) -> None:
+    if (await _run(_caller, ctx)).user_id is None:
+        raise PermissionError(f"{tool} requires a logged-in user")
+
+
+def _hr_search(query: str, topic: str | None, limit: int) -> dict[str, Any]:
+    with SessionLocal() as db:
+        if not db.scalar(select(func.count(HrDocument.id)).where(HrDocument.status == "ready")):
+            return {"passages": [], "note": "No HR documents have been uploaded yet."}
+    passages = get_hr_store().search(query, _clamp(limit, 1, 10), topic or None)
+    return {
+        "passages": [
+            {"document": p.document, "topic": p.topic, "page": p.page, "text": p.text, "score": p.score}
+            for p in passages
+        ]
+    }
+
+
+@mcp.tool()
+async def hr_search(ctx: Context, query: str, topic: str | None = None, limit: int = 5) -> dict[str, Any]:
+    """LOGGED-IN USERS ONLY. Search the company's HR documents (policies, leave, benefits, procedures) and return the
+    most relevant passages with document title and page. Answer HR questions only from these passages.
+    `topic` optionally restricts to one document topic (see hr_list_documents)."""
+    await _require_login(ctx, "hr_search")
+    return await _run(_hr_search, query, topic, limit)
+
+
+def _hr_list() -> dict[str, Any]:
+    with SessionLocal() as db:
+        docs = db.scalars(select(HrDocument).where(HrDocument.status == "ready").order_by(HrDocument.topic, HrDocument.title))
+        return {"documents": [{"title": d.title, "topic": d.topic, "pages": d.pages} for d in docs]}
+
+
+@mcp.tool()
+async def hr_list_documents(ctx: Context) -> dict[str, Any]:
+    """LOGGED-IN USERS ONLY. List the available HR documents with their topics."""
+    await _require_login(ctx, "hr_list_documents")
+    return await _run(_hr_list)
 
 
 # --- admin tools ----------------------------------------------------------------------------

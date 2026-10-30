@@ -13,6 +13,12 @@ class Settings(BaseSettings):
     embedding_provider: str = "fastembed"
     embedding_model: str = "BAAI/bge-small-en-v1.5"
     cors_origins: list[str] = ["http://localhost:5173"]
+    # HR documents (RAG): multilingual model, separate collection from blog posts
+    hr_collection: str = "hr_chunks"
+    hr_embedding_model: str = "intfloat/multilingual-e5-large"
+    hr_max_upload_mb: int = 20
+    hr_chunk_chars: int = 1000
+    hr_chunk_overlap: int = 150
     # Admin account created on startup if missing. Override in production!
     admin_username: str = "murat"
     admin_password: str = "murat"

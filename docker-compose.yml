@@ -5,7 +5,7 @@ services:
       POSTGRES_USER: blog
       POSTGRES_PASSWORD: blog
       POSTGRES_DB: blog
-    ports: ["5432:5432"]
+    ports: ["127.0.0.1:5432:5432"]  # local tools (DBeaver) only
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./docker/init-test-db.sql:/docker-entrypoint-initdb.d/init-test-db.sql:ro
@@ -17,7 +17,7 @@ services:
 
   qdrant:
     image: qdrant/qdrant:v1.20.0
-    ports: ["6333:6333", "6334:6334"]
+    ports: ["127.0.0.1:6333:6333", "127.0.0.1:6334:6334"]  # no auth: never expose publicly (holds HR text)
     volumes:
       - qdrant_data:/qdrant/storage
     healthcheck:
@@ -35,7 +35,7 @@ services:
       DATABASE_URL: postgresql+psycopg://blog:blog@postgres:5432/blog
       QDRANT_URL: http://qdrant:6333
       CORS_ORIGINS: '["http://localhost:5173"]'
-    ports: ["8000:8000"]
+    ports: ["127.0.0.1:8000:8000"]  # browsers go through the web container
     volumes:
       - models:/models
     depends_on:

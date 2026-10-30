@@ -36,6 +36,20 @@ The contract lives in [`contract/openapi.yaml`](contract/openapi.yaml).
 | GET | `/api/v1/auth/me` | Current user |
 | GET / POST | `/api/v1/users` | List / create users (admin) |
 
+## HR documents (RAG)
+Admins upload text-based PDFs at `POST /api/v1/hr/documents` (or in the blog's admin panel → HR Documents).
+Text is extracted per page (pypdf), split into ~1000-character passages on paragraph boundaries with overlap,
+embedded with **intfloat/multilingual-e5-large** (Turkish-capable, 1024 dims; ~2.2 GB download on first start) and
+stored in the Qdrant collection `hr_chunks` with document, topic and page. Processing runs in the background; the
+document's `status` goes `processing` → `ready` / `failed`. Deleting a document removes its vectors.
+Only logged-in users can search them (MCP `hr_search`, `hr_list_documents`). Scanned PDFs without a text layer
+are rejected with a clear error (no OCR).
+
+## Ports and security
+Postgres, Qdrant, the API and the agent are bound to `127.0.0.1` (usable from this machine, e.g. DBeaver or the
+Qdrant dashboard at http://localhost:6333/dashboard). **Qdrant has no authentication and stores HR text**, so never
+publish its port; on a server, also set a Qdrant API key and change the Postgres password and `ADMIN_PASSWORD`.
+
 ## MCP server
 `POST /mcp/` (Streamable HTTP, stateless) exposes read-only tools for AI clients such as
 [blog-agent](https://github.com/ilkmurat/blog-agent): posts by category/tag, most liked, semantic search, stats and
@@ -73,6 +87,7 @@ app/
   auth.py          auth dependencies (optional user / member / admin), admin bootstrap
   security.py      password + token hashing
   mcp_server.py    MCP tools mounted at /mcp
+  hr.py            HR PDF extraction, chunking, multilingual-e5 store
   routers/         health, posts, categories/tags, auth/users
   seed.py, reindex.py
 alembic/           Migrations

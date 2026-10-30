@@ -120,6 +120,27 @@ class AuthResponse(BaseModel):
     user: UserOut
 
 
+class HrDocumentOut(BaseModel):
+    id: int
+    title: str
+    topic: str
+    filename: str
+    size_bytes: int
+    pages: int
+    chunk_count: int
+    status: Literal["processing", "ready", "failed"]
+    error: str | None
+    uploaded_by: str | None
+    created_at: datetime
+
+    @classmethod
+    def of(cls, doc) -> "HrDocumentOut":
+        return cls(
+            **{f: getattr(doc, f) for f in cls.model_fields if f != "uploaded_by"},
+            uploaded_by=doc.uploaded_by.username if doc.uploaded_by else None,
+        )
+
+
 class Health(BaseModel):
     status: Literal["ok", "degraded"]
     postgres: Literal["ok", "error"]

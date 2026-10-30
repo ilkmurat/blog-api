@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Inkwell Blog API
-  version: 0.2.0
+  version: 0.3.0
   description: >
     Backend for the Inkwell blog. Posts, categories and tags are stored in PostgreSQL;
     post embeddings are stored in Qdrant to power semantic search.
@@ -239,6 +239,72 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "409": { $ref: "#/components/responses/Conflict" }
         "422": { $ref: "#/components/responses/ValidationError" }
+  /api/v1/hr/documents:
+    get:
+      summary: List HR documents (admin)
+      operationId: listHrDocuments
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Documents, newest first
+          content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/HrDocument" } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      summary: Upload an HR document (admin)
+      description: >
+        Accepts a text-based PDF (max 20 MB). Returns immediately with status `processing`; text extraction,
+        chunking and embedding (multilingual-e5-large) run in the background and the status becomes `ready`
+        or `failed` (see `error`). Scanned PDFs without a text layer fail with "no extractable text".
+      operationId: uploadHrDocument
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file: { type: string, format: binary, description: PDF file }
+                title: { type: string, maxLength: 200, description: Defaults to the file name without extension }
+                topic: { type: string, maxLength: 100, description: "Free-form subject, e.g. İzin, Yan Haklar. Defaults to Genel" }
+      responses:
+        "202":
+          description: Accepted for processing
+          content: { application/json: { schema: { $ref: "#/components/schemas/HrDocument" } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "413":
+          description: File larger than 20 MB
+          content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+        "415":
+          description: Not a PDF
+          content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+        "422": { $ref: "#/components/responses/ValidationError" }
+  /api/v1/hr/documents/{document_id}:
+    parameters:
+      - { name: document_id, in: path, required: true, schema: { type: integer } }
+    get:
+      summary: Get one HR document's status (admin)
+      operationId: getHrDocument
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: The document
+          content: { application/json: { schema: { $ref: "#/components/schemas/HrDocument" } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    delete:
+      summary: Delete an HR document and its vectors (admin)
+      operationId: deleteHrDocument
+      security: [{ bearerAuth: [] }]
+      responses:
+        "204": { description: Deleted }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
 components:
   securitySchemes:
     bearerAuth:
@@ -397,3 +463,18 @@ components:
       properties:
         token: { type: string }
         user: { $ref: "#/components/schemas/User" }
+    HrDocument:
+      type: object
+      required: [id, title, topic, filename, size_bytes, pages, chunk_count, status, error, uploaded_by, created_at]
+      properties:
+        id: { type: integer }
+        title: { type: string }
+        topic: { type: string }
+        filename: { type: string }
+        size_bytes: { type: integer }
+        pages: { type: integer, description: 0 until processed }
+        chunk_count: { type: integer, description: Number of indexed passages; 0 until processed }
+        status: { type: string, enum: [processing, ready, failed] }
+        error: { type: [string, "null"] }
+        uploaded_by: { type: [string, "null"], description: Username of the uploader }
+        created_at: { type: string, format: date-time }
